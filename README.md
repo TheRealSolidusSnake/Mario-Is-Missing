@@ -1,2 +1,2 @@
 # Mario-Is-Missing
-APworld fixes for Mario is Missing during Pink's absence
+Poor attempts at fixing Pink's masterpiece
