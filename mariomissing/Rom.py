@@ -1,6 +1,7 @@
 import hashlib
 import os
 import Utils
+import settings
 from worlds.Files import APDeltaPatch
 from .SetupGame import get_palette_bytes, shirt_color_data, get_shirt_color, pants_color_data, get_pants_color
 USHASH = '2a2152976e503eaacd9815f44c262d73'
@@ -783,7 +784,7 @@ def patch_rom(world, rom, player: int, multiworld):
         palette = get_pants_color(world)
         rom.write_bytes(addr, get_palette_bytes(palette, target[0], target[1], target[2]))
 
-    from Main import __version__
+    from Utils import __version__
     rom.name = bytearray(f'MiMAP{__version__.replace(".", "")[0:3]}_{player}_{multiworld.seed:11}\0', 'utf8')[:15]
     rom.name.extend([0] * (15 - len(rom.name)))
     rom.write_bytes(0x007FC0, rom.name)
@@ -814,7 +815,7 @@ def get_base_rom_bytes(file_name: str = "") -> bytes:
     return base_rom_bytes
 
 def get_base_rom_path(file_name: str = "") -> str:
-    options: Utils.OptionsType = Utils.get_options()
+    options: settings.Settings = settings.get_settings()
     if not file_name:
         file_name = options["mariomissing_options"]["rom_file"]
     if not os.path.exists(file_name):
