@@ -12,6 +12,7 @@ from .community_questions import (question_mapping, answer_addrs,
 using_dkc2_database = False
 try:
     from worlds._dkc2_trivia import trivia
+    from worlds._dkc2_trivia import games
     topics = trivia.retrieve_topics()
     using_dkc2_database = True
 except ImportError:
@@ -165,8 +166,8 @@ class MIMSNIClient(SNIClient):
                         categories_with_questions.append(topic_name)
                     for question_data in topic.fetch_every_question():
                         question_string = question_data.question
-                        if topic_name in question_string and topic_name in trivia.short_game_names:
-                            question_string = question_string.replace(topic_name, trivia.short_game_names[topic_name])
+                        if topic_name in question_string and topic_name in games.short_names:
+                            question_string = question_string.replace(topic_name, games.short_names[topic_name])
                         if len(question_string) > 65 or question_string in question_mapping or \
                             len(question_data.correct_answer) > 34 or len(question_data.incorrect_answer_1) > 34 or \
                             len(question_data.incorrect_answer_2) > 34 or len(question_data.incorrect_answer_3) > 34:
