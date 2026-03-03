@@ -9,6 +9,15 @@ from .community_questions import (question_mapping, answer_addrs,
                                   incorrect_answer_2, incorrect_answer_3,
                                   supported_categories, categories_with_questions)
 
+using_dkc2_database = False
+try:
+    from worlds._dkc2_trivia import trivia
+    from worlds._dkc2_trivia import games
+    topics = trivia.retrieve_topics()
+    using_dkc2_database = True
+except ImportError:
+    topics = {}
+
 from NetUtils import ClientStatus, color
 from worlds.AutoSNIClient import SNIClient
 
@@ -39,6 +48,7 @@ MIM_DEATHLINK_ENABLED = ROM_START + 0x0FFF11
 IS_IN_QUIZ = WRAM_START + 0x154B
 QUIZ_MODE = 0x0FFF13
 QUESTION_DEBUG = WRAM_START + 0x1544
+    
 
 class MIMSNIClient(SNIClient):
     game = "Mario is Missing"
@@ -76,8 +86,10 @@ class MIMSNIClient(SNIClient):
         return True
 
     async def game_watcher(self, ctx):
-        from SNIClient import snes_buffered_write, snes_flush_writes, snes_read
+        if ctx.server is None or ctx.server.socket.closed:
+            return
 
+        from SNIClient import snes_buffered_write, snes_flush_writes, snes_read
 
         validation_check_low = await snes_read(ctx, VALIDATION_CHECK, 0x1)
         validation_check_high = await snes_read(ctx, VALIDATION_CHECK_2, 0x1)
@@ -114,39 +126,88 @@ class MIMSNIClient(SNIClient):
             ctx.rom = None
             return
 
-        if 'active_categories' not in globals():  # only create categories once
-            active_categories = []
+        if not hasattr(self, 'active_categories'):  # only create categories once
+            self.active_categories = []
+            print (quiz_mode[0], using_dkc2_database)
             if quiz_mode[0] == 0x02:
-                active_categories.extend(supported_categories)
+                self.active_categories.extend(supported_categories)
+                if using_dkc2_database:
+                    self.active_categories.extend([topic for topic in topics.keys()])
             elif quiz_mode[0] == 0x01:
-                for slot in ctx.slot_info.values():
-                    active_categories.append(slot.game)
-            active_categories.append('General')
+                if using_dkc2_database:
+                    for slot in ctx.slot_info.values():
+                        game = slot.game
+                        if game in trivia.game_aliases.keys():
+                            game = trivia.game_aliases[game]
+                        self.active_categories.append(game)
+                else:
+                    for slot in ctx.slot_info.values():
+                        self.active_categories.append(slot.game)
+            self.active_categories.append('General')
+
+            if using_dkc2_database:
+                extra_categories = [
+                    'Math',
+                    'History',
+                    'Language',
+                    'Pop-Culture',
+                    'Science',
+                    'Chemistry',
+                    'Biology',
+                    'Sports',
+                    'Art',
+                    'Food',
+                    'Geography',
+                ]
+                for topic_name, topic in topics.items():
+                    if topic_name not in self.active_categories:
+                        continue
+                    if topic_name in extra_categories:
+                        categories_with_questions.append(topic_name)
+                    for question_data in topic.fetch_every_question():
+                        question_string = question_data.question
+                        if topic_name in question_string and topic_name in games.short_names:
+                            question_string = question_string.replace(topic_name, games.short_names[topic_name])
+                        if len(question_string) > 65 or question_string in question_mapping or \
+                            len(question_data.correct_answer) > 34 or len(question_data.incorrect_answer_1) > 34 or \
+                            len(question_data.incorrect_answer_2) > 34 or len(question_data.incorrect_answer_3) > 34:
+                            continue
+                        question_string = question_string.ljust(64, " ")
+                        if topic_name not in question_mapping:
+                            question_mapping[topic_name] = []
+                        question_mapping[topic_name].append(question_string)
+                        correct_answer[question_string] = question_data.correct_answer.ljust(33, " ")
+                        incorrect_answer_1[question_string] = question_data.incorrect_answer_1.ljust(33, " ")
+                        incorrect_answer_2[question_string] = question_data.incorrect_answer_2.ljust(33, " ")
+                        incorrect_answer_3[question_string] = question_data.incorrect_answer_3.ljust(33, " ")
+                        if topic_name not in categories_with_questions:
+                            categories_with_questions.append(topic_name)
+            print (list(question_mapping.keys()))
 
         if init_comm_quiz[0] != 0x00:
             question_repeat = True
             loaded_question = await snes_read(ctx, SRAM_START + 0x0012, 0x40)
             loaded_question_raw = loaded_question.decode('ascii')
             while question_repeat is True:
-                current_category = random.choice(active_categories)
+                current_category = random.choice(self.active_categories)
                 if current_category not in categories_with_questions:
                     current_category = 'General'
                 var_answ_values = [0, 1, 2, 3]
                 var_answ = random.choice(var_answ_values)
-                if question_debug[0] != 0x00:
-                    question_text = question_test[question_debug[0]]
+                #if question_debug[0] != 0x00:
+                #    question_text = question_test[question_debug[0]]
+                #else:
+                question_text = random.choice(question_mapping[current_category])
+                if question_text == loaded_question_raw:
+                    question_repeat = True
                 else:
-                    question_text = random.choice(question_mapping[current_category])
-                    if question_text == loaded_question_raw:
-                        question_repeat = True
-                    else:
-                        question_repeat = False
+                    question_repeat = False
             snes_buffered_write(ctx, SRAM_START + 0x0010, bytes([0x04])) #Number of answers
             snes_buffered_write(ctx, SRAM_START + 0x0012, question_text)
             answer_lookup = {
                 0: incorrect_answer_1,
                 1: incorrect_answer_2,
-                2: incorrect_answer_3
+                2: incorrect_answer_3,
             }
             for i in range(3):
                 current_answer = answer_lookup[i][question_text]
@@ -164,8 +225,6 @@ class MIMSNIClient(SNIClient):
             snes_buffered_write(ctx, SRAM_START + 0x0011, bytes([var_answ + 1])) #Correct Answer
             snes_buffered_write(ctx, WRAM_START + 0x154B, bytes([0x00])) #End quiz logic
             #print(active_slots)
-
-        print("hello :)")
 
         new_checks = []
         from .Rom import location_table, item_values
