@@ -52,6 +52,7 @@ QUESTION_DEBUG = WRAM_START + 0x1544
 
 class MIMSNIClient(SNIClient):
     game = "Mario is Missing"
+    patch_suffix = ".apmim"
 
     async def deathlink_kill_player(self, ctx):
         from SNIClient import DeathState, snes_buffered_write, snes_flush_writes, snes_read
